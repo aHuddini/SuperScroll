@@ -1,0 +1,11 @@
+﻿Id: SuperScroll_994c1b41-d13e-45cc-abae-e2b898b00db3
+Name: SuperScroll
+Author: Huddini
+Version: 0.1.0
+Module: SuperScroll.dll
+Type: GenericPlugin
+Icon: icon.png
+Description: Smooth, pixel-accurate scrolling for Playnite. Replaces the built-in wheel behaviour with frame-synced motion that keeps list virtualization intact.
+Links:
+  - Name: GitHub Repository
+    Url: https://github.com/aHuddini/SuperScroll

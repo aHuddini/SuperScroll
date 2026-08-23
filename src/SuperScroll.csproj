@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>Library</OutputType>
+        <TargetFramework>net4.6.2</TargetFramework>
+        <UseWPF>true</UseWPF>
+        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+        <RootNamespace>SuperScroll</RootNamespace>
+        <AssemblyName>SuperScroll</AssemblyName>
+        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+        <LangVersion>latest</LangVersion>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)'=='Release'">
+        <DebugType>portable</DebugType>
+        <PlatformTarget>AnyCPU</PlatformTarget>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- PrivateAssets="none" matches UniPlaySong: the SDK assembly must be resolvable at
+             build time but Playnite supplies it at runtime, so it is not copied into the package. -->
+        <PackageReference Include="PlayniteSDK" Version="6.16.0.0" PrivateAssets="none" />
+        <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    </ItemGroup>
+</Project>

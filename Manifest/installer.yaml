@@ -1,0 +1,10 @@
+AddonId: SuperScroll_994c1b41-d13e-45cc-abae-e2b898b00db3
+Packages:
+  - Version: 0.1.0
+    RequiredApiVersion: 6.16.0
+    ReleaseDate: 2026-08-22
+    PackageUrl: 'https://github.com/aHuddini/SuperScroll/releases/download/0.1.0/SuperScroll-0_1_0.pext'
+    Changelog:
+      - '[New Feature] Smooth, pixel-accurate scrolling for every list in Playnite, including ones your theme creates. Frame-synced motion means fast scrolling accelerates instead of stuttering.'
+      - '[New Feature] Tuning controls for smoothness, distance per wheel notch, and line height.'
+      - '[Performance] List virtualization stays enabled, so large libraries scroll as smoothly as small ones.'
