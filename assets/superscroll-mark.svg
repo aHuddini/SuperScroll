@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="t d">
+  <title id="t">SuperScroll</title>
+  <desc id="d">Three descending chevrons with shrinking gaps, representing eased scroll motion.</desc>
+  <defs>
+    <linearGradient id="field" x1="0" y1="0" x2="0" y2="256" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1A212B"/>
+      <stop offset="1" stop-color="#12161C"/>
+    </linearGradient>
+    <linearGradient id="motion" x1="128" y1="58" x2="128" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1F6E5C"/>
+      <stop offset="1" stop-color="#69DCBB"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#field)"/>
+  <g fill="none" stroke="url(#motion)" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M68 70 L128 104 L188 70" opacity=".65"/>
+    <path d="M82 128 L128 154 L174 128" opacity=".82"/>
+    <path d="M94 170 L128 188 L162 170"/>
+  </g>
+</svg>

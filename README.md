@@ -1,6 +1,10 @@
-# SuperScroll
+<p align="center">
+  <img src="assets/banner.png" alt="SuperScroll — smooth, pixel-accurate scrolling for Playnite" width="720">
+</p>
 
-Smooth, pixel-accurate scrolling for [Playnite](https://playnite.link/).
+<p align="center">
+  Smooth, pixel-accurate scrolling for <a href="https://playnite.link/">Playnite</a>.
+</p>
 
 Playnite's lists scroll by whole rows: one wheel notch jumps one entire item, and nothing in between
 is possible. SuperScroll replaces that with frame-synced motion — every notch eases into place, and
