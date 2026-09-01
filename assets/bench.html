@@ -191,18 +191,21 @@
   <h2>The three settings</h2>
 
   <div class="presets" id="presets">
+    <button class="preset" data-s=".30" data-l="6" data-h="136">Huddini Flow</button>
+    <button class="preset" data-s=".25" data-l="3" data-h="48">Playnite Familiar</button>
     <button class="preset" data-s=".12" data-l="3" data-h="48">Glide</button>
-    <button class="preset" data-s=".25" data-l="3" data-h="48">Default</button>
     <button class="preset" data-s=".45" data-l="4" data-h="48">Snappy</button>
-    <button class="preset" data-s=".80" data-l="3" data-h="48">Almost instant</button>
+    <button class="preset" data-s=".85" data-l="3" data-h="48">Near Instant</button>
+    <button class="preset" data-s=".28" data-l="4" data-h="120">Grid Sweep</button>
+    <button class="preset" data-s=".35" data-l="3" data-h="24">Dense List</button>
   </div>
 
   <div class="panel">
     <div class="ctl">
       <div class="ctl-top">
         <span class="ctl-name">Smoothness</span>
-        <input type="range" id="sSmooth" min="0.05" max="0.95" step="0.05" value="0.25" aria-label="Smoothness">
-        <span class="val" id="vSmooth">0.25</span>
+        <input type="range" id="sSmooth" min="0.05" max="0.95" step="0.05" value="0.30" aria-label="Smoothness">
+        <span class="val" id="vSmooth">0.30</span>
       </div>
       <p class="ctl-note">Controls <b>how it arrives</b>, not how far it goes. Each frame the view closes this fraction of whatever distance is left &mdash; so it starts fast and settles softly. <b>Low glides for a long time; high snaps into place.</b> This is the one that changes the feel.</p>
     </div>
@@ -210,8 +213,8 @@
     <div class="ctl">
       <div class="ctl-top">
         <span class="ctl-name">Lines per notch</span>
-        <input type="range" id="sLines" min="1" max="12" step="0.5" value="3" aria-label="Lines per notch">
-        <span class="val" id="vLines">3</span>
+        <input type="range" id="sLines" min="1" max="12" step="0.5" value="6" aria-label="Lines per notch">
+        <span class="val" id="vLines">6</span>
       </div>
       <p class="ctl-note">Controls <b>how far</b> one click of the wheel travels, counted in lines. Windows' own default is 3, so leaving it there means SuperScroll changes the feel without changing the distance you're used to.</p>
     </div>
@@ -219,8 +222,8 @@
     <div class="ctl">
       <div class="ctl-top">
         <span class="ctl-name">Line height</span>
-        <input type="range" id="sHeight" min="8" max="200" step="4" value="48" aria-label="Line height">
-        <span class="val" id="vHeight">48 px</span>
+        <input type="range" id="sHeight" min="8" max="200" step="4" value="136" aria-label="Line height">
+        <span class="val" id="vHeight">136 px</span>
       </div>
       <p class="ctl-note">What a &ldquo;line&rdquo; is worth in pixels. Playnite's rows are far taller than a line of text, so this is the conversion. <b>Raise it if a notch feels short in grid view; lower it for dense list views.</b> Together with the setting above it decides the distance per notch.</p>
     </div>

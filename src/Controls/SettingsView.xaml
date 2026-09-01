@@ -1,4 +1,4 @@
-<UserControl x:Class="SuperScroll.Controls.SettingsView"
+﻿<UserControl x:Class="SuperScroll.Controls.SettingsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -63,7 +63,7 @@
                                    Text="{Binding Settings.Smoothing, StringFormat='{}{0:0.00}'}"/>
                     </StackPanel>
                     <TextBlock Style="{StaticResource SsHint}" Margin="28,4,0,12"
-                               Text="How much of the remaining distance is covered each frame. Lower glides for longer, higher snaps into place. Shared with Fullscreen. Default 0.25."/>
+                               Text="How much of the remaining distance is covered each frame. Lower glides for longer, higher snaps into place. Shared with Fullscreen. Default 0.30."/>
 
                     <StackPanel Orientation="Horizontal" Margin="28,6,0,0">
                         <TextBlock Text="Lines per notch" Style="{StaticResource SsLabel}"/>
@@ -75,7 +75,7 @@
                                    Text="{Binding Settings.LinesPerNotch, StringFormat='{}{0:0.#}'}"/>
                     </StackPanel>
                     <TextBlock Style="{StaticResource SsHint}" Margin="28,4,0,12"
-                               Text="How far one wheel notch travels. Windows' own default is 3. Default 3."/>
+                               Text="How far one wheel notch travels. Windows' own default is 3; SuperScroll ships 6. Default 6."/>
 
                     <StackPanel Orientation="Horizontal" Margin="28,6,0,0">
                         <TextBlock Text="Line height" Style="{StaticResource SsLabel}"/>
@@ -87,7 +87,7 @@
                                    Text="{Binding Settings.LineHeightPixels, StringFormat='{}{0:0} px'}"/>
                     </StackPanel>
                     <TextBlock Style="{StaticResource SsHint}" Margin="28,4,0,12"
-                               Text="The pixel height one line stands for. Raise it if a notch feels short in grid views, lower it for dense list views. Default 48."/>
+                               Text="The pixel height one line stands for. Raise it if a notch feels short in grid views, lower it for dense list views. Default 136."/>
 
                     <CheckBox Style="{StaticResource SsToggle}" Margin="28,6,0,0"
                               Content="Bounce at the ends of a list"

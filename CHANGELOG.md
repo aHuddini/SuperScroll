@@ -30,6 +30,40 @@ All notable changes to SuperScroll will be documented in this file.
   at 250ms so a GC pause cannot teleport the view.
 - Settings for smoothness, lines per notch and line height, with a reset that copies from a pristine
   settings instance rather than restating defaults.
+- **Overscroll bounce at the ends of a list.** The arithmetic lives in `ScrollPolicy` with the rest
+  of the tuning, so it is asserted rather than eyeballed. `AccumulateOverscroll` resists each
+  further push; `DisplacementFor` applies WebKit's 0.55 rubber-band coefficient, so the band
+  approaches its limit without ever reaching it and no push is ever refused outright;
+  `SpringStep` integrates the release. The spring step is clamped, because a stalled frame
+  delivering a large elapsed time would otherwise compound velocity and throw the list off screen.
+  `ShouldBounce` decides whether an end was genuinely reached — content that fits in the viewport
+  has no end to push against, and a list nested in a scrollable page still hands the wheel up. On
+  by default.
+- **Fullscreen navigation smoothing.** Fullscreen is driven by a controller rather than a wheel, so
+  moving the selection is what scrolls the list. The scroll that follows a selection change is
+  eased, leaving the list where Playnite put it and sliding only the content, so it cannot fight
+  Playnite's "keep the selection visible" behaviour. A hold debounce lands very fast repeats
+  instantly, since animating them leaves the content trailing a selection that has already moved on.
+- **Hold repeat timings below the platform floors.** Holding an arrow key waits out the Windows
+  typematic delay, which offers only 250/500/750/1000 ms and applies to every application;
+  SuperScroll replaces it inside Playnite with no floor. Separately, Playnite's own repeat timings
+  govern controller input, because Playnite simulates arrow keys from a gamepad rather than reading
+  it directly. Both are off by default, and the controller override reads Playnite's values first
+  and restores them when switched off, when the plugin is disabled, and when Playnite closes.
+- **Presets.** Seven named combinations of the three wheel values, with the selection derived from
+  the current values rather than stored, so moving any slider reports `Custom` without extra
+  bookkeeping.
+- **Tuning bench.** `OpenTuningBench` writes the embedded `bench.html` out beside the plugin data
+  with the current settings in the URL fragment and opens it, so the comparison starts from the
+  reader's actual configuration rather than defaults they would have to reproduce by hand. The same
+  file is served publicly through GitHub Pages and linked from the README.
+
+### Changed
+
+- **Shipped defaults are now the "Huddini Flow" preset:** lines per notch 3 → 6, line height
+  48 → 136 px, smoothness 0.25 → 0.30. Arrived at by scrolling a real library rather than by
+  reasoning about the curve. A notch now travels 816 px where it previously travelled 144, so the
+  feel is substantially different; `Playnite Familiar` restores the old values.
 
 ### Notes
 
