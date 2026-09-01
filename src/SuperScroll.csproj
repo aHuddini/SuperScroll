@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <OutputType>Library</OutputType>
         <TargetFramework>net4.6.2</TargetFramework>
@@ -14,6 +14,17 @@
         <DebugType>portable</DebugType>
         <PlatformTarget>AnyCPU</PlatformTarget>
     </PropertyGroup>
+
+    <ItemGroup>
+        <!-- Shipped inside the DLL and written out on demand, so there is no loose file to go
+             missing and no second thing to keep in step with the settings it previews. It sits
+             under assets/ because the README links that same file as a live demo through
+             GitHub Pages; LogicalName pins the manifest name so moving the file cannot
+             change what OpenTuningBench looks up at runtime. -->
+        <EmbeddedResource Include="..\assets\bench.html">
+            <LogicalName>SuperScroll.Resources.bench.html</LogicalName>
+        </EmbeddedResource>
+    </ItemGroup>
 
     <ItemGroup>
         <!-- PrivateAssets="none" matches UniPlaySong: the SDK assembly must be resolvable at

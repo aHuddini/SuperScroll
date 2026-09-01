@@ -34,7 +34,7 @@ namespace SuperScroll.Services
         private DispatcherTimer _timer;
         private Key _heldKey;
         private bool _inInitialDelay;
-        private long _lastRaiseTicks;
+        private DependencyObject _ownerList;   // the list the hold started in
 
         public KeyRepeatDriver(Func<SuperScrollSettings> getSettings, FileLogger fileLogger)
         {
@@ -85,6 +85,8 @@ namespace SuperScroll.Services
             // movement, and driving our own repeat there would fight the text editor.
             if (IsTextEntryFocused()) return;
 
+            self.RelaxListThrottle(e.OriginalSource as DependencyObject);
+
             if (e.IsRepeat)
             {
                 // The OS repeat. Swallow it - the timer below is what repeats now, at the rate the
@@ -111,6 +113,7 @@ namespace SuperScroll.Services
 
             _heldKey = key;
             _inInitialDelay = true;
+            _ownerList = FindListBoxEx(Keyboard.FocusedElement as DependencyObject);
 
             // Input priority, not the DispatcherTimer default of Background: a repeat that queues
             // behind rendering arrives late and irregularly, which is the very thing being fixed.
@@ -131,6 +134,7 @@ namespace SuperScroll.Services
             _timer.Tick -= OnTick;
             _timer = null;
             _heldKey = Key.None;
+            _ownerList = null;
         }
 
         private void OnTick(object sender, EventArgs e)
@@ -156,22 +160,37 @@ namespace SuperScroll.Services
                 {
                     _inInitialDelay = false;
 
-                    if (settings.PaceRepeatToLayout)
+                    // Layout-paced runs the timer at the frame floor and gates each tick on tile
+                    // availability; the fixed mode uses the interval the user chose.
+                    _timer.Interval = TimeSpan.FromMilliseconds(
+                        settings.PaceRepeatToLayout
+                            ? Constants.LayoutPacedFloorMs
+                            : ScrollPolicy.Clamp(settings.KeyRepeatIntervalMs,
+                                Constants.MinKeyRepeatIntervalMs, Constants.MaxKeyRepeatIntervalMs));
+                }
+
+                // Focus left the list this hold started in. Without this the repeat carries on
+                // firing arrow keys at whatever now has focus - a filter checkbox - which is the
+                // "gets bugged out after holding a while" failure: CanAdvanceYet finds no list, so
+                // it answers "nothing to wait for" and every tick keeps driving the wrong element.
+                if (_ownerList != null &&
+                    FindListBoxEx(Keyboard.FocusedElement as DependencyObject) != _ownerList)
+                {
+                    if (!ReturnFocusToSelection(_ownerList))
                     {
-                        // Hand off to the layout-paced loop and stop the clock entirely - from here
-                        // the panel decides the rate, not a slider.
-                        var key = _heldKey;
+                        _fileLogger?.Lifecycle("[KeyRepeat] focus left the list and could not be returned — stopping the repeat rather than driving keys elsewhere");
                         StopTimer();
-                        _heldKey = key;
-                        RaiseKeyDown(key);
-                        QueueLayoutPacedRepeat();
                         return;
                     }
+                    _fileLogger?.Debug(() => "[KeyRepeat] focus returned to the list mid-hold");
+                }
 
-                    // First repeat has landed; switch from the hold delay to the repeat interval.
-                    _timer.Interval = TimeSpan.FromMilliseconds(
-                        ScrollPolicy.Clamp(settings.KeyRepeatIntervalMs,
-                            Constants.MinKeyRepeatIntervalMs, Constants.MaxKeyRepeatIntervalMs));
+                // Layout-paced: skip this tick if the panel has not realized the current
+                // selection's tile yet. Skipping costs one frame; overrunning costs your place.
+                if (settings.PaceRepeatToLayout && !CanAdvanceYet())
+                {
+                    _fileLogger?.Debug(() => "[KeyRepeat] waiting for the tile to be realized");
+                    return;
                 }
 
                 RaiseKeyDown(_heldKey);
@@ -183,66 +202,87 @@ namespace SuperScroll.Services
             }
         }
 
-        // Schedules the next repeat for AFTER the layout pass that realizes the tiles this one
-        // just asked for.
+        // Lowers Playnite's own per-list navigation throttle.
         //
-        // This is the fix the focus-escape bug actually wants, rather than the recovery beside it.
-        // Playnite's FullscreenTilePanel.GetVisibleRange realizes exactly one row either side of
-        // the viewport - the `- computedColumns` and `Rows + 1` terms - and it does so during
-        // Measure/Arrange. A fixed-interval repeat can therefore move the selection twice before
-        // layout runs once, putting the new item two rows out, past that window;
-        // ContainerFromItem then returns null and focus is orphaned. Playnite's own 150ms throttle
-        // avoids the race by being slower than any layout pass.
+        // ListBoxEx holds `keyRepeatTimer` at Interval = 150 and does `if (ignoreKeyRepeat) {
+        // e.Handled = true; return; }`, so ANY navigation key arriving within 150ms of the last is
+        // discarded - including keys the user pressed by hand. That is the reported "doesn't
+        // respect how fast I am pressing": pressing quickly is simply not possible, because two
+        // presses inside 150ms become one.
         //
-        // Posting at Loaded priority runs after layout has completed, so the containers this repeat
-        // needs exist before the next one is issued. The rate becomes whatever the panel can
-        // actually sustain: quick when tiles are cheap, self-limiting when they are not, and never
-        // ahead of what is drawn.
-        private void QueueLayoutPacedRepeat()
-        {
-            var dispatcher = Application.Current?.Dispatcher;
-            if (dispatcher == null) return;
-
-            // DispatcherPriority.Loaded sits below Render and above Input, so it fires once the
-            // layout pass triggered by the move has finished.
-            dispatcher.BeginInvoke(new Action(LayoutPacedTick), DispatcherPriority.Loaded);
-        }
-
-        private void LayoutPacedTick()
+        // This was found earlier and deliberately left alone, on the grounds that navigating faster
+        // reaches unrealized tiles sooner and that throttle was the only thing preventing it. That
+        // reasoning no longer applies: CanAdvanceYet now gates on whether the tile actually exists,
+        // which is the precise protection Playnite was approximating with a blunt 150ms wait. With
+        // the accurate check in place the blunt one only costs presses.
+        //
+        // Only ever lowered, once per list, and the timer belongs to a control rather than to the
+        // system - it dies with the list, so there is nothing global to restore.
+        private void RelaxListThrottle(DependencyObject source)
         {
             try
             {
-                if (_heldKey == Key.None) return;
-                if (!Keyboard.IsKeyDown(_heldKey) || IsTextEntryFocused())
+                var list = FindListBoxEx(source);
+                if (list == null) return;
+                if (ThrottledLists.TryGetValue(list, out _)) return;
+                ThrottledLists.Add(list, Boxed);
+
+                var field = list.GetType().GetField("keyRepeatTimer",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var timer = field?.GetValue(list) as System.Timers.Timer;
+                if (timer == null)
                 {
-                    _heldKey = Key.None;
+                    _fileLogger?.Lifecycle($"[KeyRepeat] {list.GetType().Name} exposes no keyRepeatTimer — this Playnite version throttles differently, leaving it alone");
                     return;
                 }
 
-                var settings = _getSettings?.Invoke();
-                if (settings?.EnableKeyRepeatOverride != true || !settings.PaceRepeatToLayout)
-                {
-                    _heldKey = Key.None;
-                    return;
-                }
+                if (timer.Interval <= Constants.LayoutPacedFloorMs) return;
 
-                // Frame floor. A trivial layout pass can complete several times inside one rendered
-                // frame, which would move the selection further than anything is drawn.
-                var now = DateTime.UtcNow.Ticks;
-                var sinceMs = (now - _lastRaiseTicks) / (double)TimeSpan.TicksPerMillisecond;
-                if (sinceMs < Constants.LayoutPacedFloorMs)
-                {
-                    QueueLayoutPacedRepeat();
-                    return;
-                }
-
-                RaiseKeyDown(_heldKey);
-                QueueLayoutPacedRepeat();
+                _fileLogger?.Lifecycle($"[KeyRepeat] {list.GetType().Name} throttle lowered from {timer.Interval:F0}ms to {Constants.LayoutPacedFloorMs:F0}ms so fast presses are not discarded");
+                timer.Interval = Constants.LayoutPacedFloorMs;
             }
             catch (Exception ex)
             {
-                _fileLogger?.Debug(() => $"[KeyRepeat] layout-paced tick failed: {ex.Message}");
-                _heldKey = Key.None;
+                _fileLogger?.Debug(() => $"[KeyRepeat] could not relax the list throttle: {ex.Message}");
+            }
+        }
+
+        private static readonly object Boxed = new object();
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<DependencyObject, object> ThrottledLists =
+            new System.Runtime.CompilerServices.ConditionalWeakTable<DependencyObject, object>();
+
+        // Paces repeats to tile availability rather than to a clock.
+        //
+        // The first version of this posted each repeat with Dispatcher.BeginInvoke at
+        // DispatcherPriority.Loaded and froze the application outright. Loaded sits ABOVE Input in
+        // the dispatcher's order, so a callback that re-posts at Loaded from inside a Loaded
+        // callback never lets the queue fall to Input. Keystrokes are then never processed, KeyUp
+        // never arrives, the held key never clears, and the loop runs forever with the UI thread
+        // fully occupied. A floor check that re-posted instead of waiting made it spin even harder.
+        //
+        // So no priority games. The existing timer keeps running at Input priority - which yields
+        // by construction - and each tick simply asks the question that actually matters: does the
+        // selected item have a realized container yet? Playnite's FullscreenTilePanel prepares one
+        // row either side of the viewport during Measure/Arrange, so a null container means the
+        // panel has not caught up and this tick should pass rather than move the selection past
+        // what exists. That is the same condition ListBoxEx.FocusSelected fails on when focus is
+        // lost, checked before causing it rather than after.
+        private bool CanAdvanceYet()
+        {
+            try
+            {
+                var list = FindListBoxEx(Keyboard.FocusedElement as DependencyObject);
+                if (list == null) return true;   // not a Playnite tile list; nothing to wait for
+
+                var selector = list as System.Windows.Controls.Primitives.Selector;
+                var items = list as ItemsControl;
+                if (selector?.SelectedItem == null || items == null) return true;
+
+                return items.ItemContainerGenerator.ContainerFromItem(selector.SelectedItem) != null;
+            }
+            catch
+            {
+                return true; // never let this check be the reason navigation stops
             }
         }
 
@@ -262,7 +302,6 @@ namespace SuperScroll.Services
             {
                 RoutedEvent = Keyboard.KeyDownEvent
             };
-            _lastRaiseTicks = DateTime.UtcNow.Ticks;
             InputManager.Current.ProcessInput(args);
 
             DiagnoseJump(owner, before, indexBefore);
@@ -304,6 +343,14 @@ namespace SuperScroll.Services
                 var name = after == null ? "nothing" : after.GetType().Name;
                 var recovered = ReturnFocusToSelection(owner);
                 _fileLogger?.Lifecycle($"[KeyRepeat] FOCUS ESCAPED to {name} at index {indexBefore} — {(recovered ? "returned to the list" : "could not return, container not realized")}");
+                return;
+            }
+
+            // The selection did not move and focus stayed put: this key is pushing against the end
+            // of the list. Bounce it, so an end feels like an edge rather than a dead key.
+            if (indexAfter == indexBefore && indexBefore >= 0)
+            {
+                BounceAtEnd(owner);
                 return;
             }
 
@@ -361,6 +408,57 @@ namespace SuperScroll.Services
             {
                 return false;
             }
+        }
+
+        // Nudges the list when navigation has run out of items in that direction.
+        //
+        // Reuses the same transform animator the wheel bounce uses, found from the list's own
+        // ScrollViewer, so keyboard and wheel produce the same motion at the same edge rather than
+        // two flourishes that almost match.
+        private void BounceAtEnd(DependencyObject list)
+        {
+            try
+            {
+                var settings = _getSettings?.Invoke();
+                if (settings?.EnableOverscrollBounce != true) return;
+
+                var sv = FindAncestorScrollViewer(list);
+                if (sv == null) return;
+
+                var up = _heldKey == Key.Up || _heldKey == Key.PageUp;
+                ScrollEnhancer.BounceFor(sv, up ? ScrollPolicy.MaxOverscrollPixels : -ScrollPolicy.MaxOverscrollPixels);
+            }
+            catch { }
+        }
+
+        private static ScrollViewer FindAncestorScrollViewer(DependencyObject start)
+        {
+            var current = start;
+            var hops = 0;
+            while (current != null && hops++ < 40)
+            {
+                var sv = current as ScrollViewer;
+                if (sv != null) return sv;
+                current = System.Windows.Media.VisualTreeHelper.GetParent(current);
+            }
+
+            // Not an ancestor of the list, but inside its template.
+            return FindChildScrollViewer(start);
+        }
+
+        private static ScrollViewer FindChildScrollViewer(DependencyObject parent)
+        {
+            if (parent == null) return null;
+            var count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent);
+            for (var i = 0; i < count; i++)
+            {
+                var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+                var sv = child as ScrollViewer;
+                if (sv != null) return sv;
+                var found = FindChildScrollViewer(child);
+                if (found != null) return found;
+            }
+            return null;
         }
 
         private static int SelectedIndexOf(DependencyObject list)

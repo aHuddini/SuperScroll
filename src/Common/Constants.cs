@@ -6,20 +6,22 @@ namespace SuperScroll.Common
 
         // Windows' own wheel default is 3 lines per notch, so matching it means the plugin changes
         // how scrolling FEELS without changing how far it goes.
-        public const double DefaultLinesPerNotch = 3.0;
+        // Huddini Flow: the shipped preset, arrived at by scrolling a real library rather
+        // than by reasoning about the curve.
+        public const double DefaultLinesPerNotch = 6.0;
         public const double MinLinesPerNotch = 1.0;
         public const double MaxLinesPerNotch = 12.0;
 
         // Playnite's list rows are far taller than a text line. This is the notional "line" the
         // notch multiplier applies to, tuned so a default notch clears roughly one grid row.
-        public const double DefaultLineHeightPixels = 48.0;
+        public const double DefaultLineHeightPixels = 136.0;
         public const double MinLineHeightPixels = 8.0;
         public const double MaxLineHeightPixels = 200.0;
 
         // Fraction of the remaining distance covered per 60Hz frame. Higher is snappier, lower is
         // floatier. 0.25 lands a notch in about six frames - quick enough to feel responsive,
         // gradual enough to read as motion rather than a jump.
-        public const double DefaultSmoothing = 0.25;
+        public const double DefaultSmoothing = 0.30;
         public const double MinSmoothing = 0.05;
         public const double MaxSmoothing = 0.95;
 

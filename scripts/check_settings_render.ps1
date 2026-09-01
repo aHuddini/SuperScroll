@@ -26,6 +26,8 @@ public class SsHarnessContext {
     public object Presets { get; set; }
     public object SelectedPreset { get; set; }
     public bool IsRepeatIntervalEnabled { get; set; }
+    public System.Windows.Input.ICommand OpenBenchCommand { get; set; }
+    public System.Windows.Input.ICommand ResetCommand { get; set; }
 }
 '@
 $ctx = New-Object SsHarnessContext

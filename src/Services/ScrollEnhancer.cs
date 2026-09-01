@@ -111,6 +111,26 @@ namespace SuperScroll.Services
                     currentOffset: scrollViewer.VerticalOffset,
                     wheelDelta: e.Delta))
             {
+                // At an end. Bounce it if asked to and nothing above wants the wheel.
+                if (ScrollPolicy.ShouldBounce(settings.EnableOverscrollBounce,
+                        scrollViewer.ExtentHeight, scrollViewer.ViewportHeight,
+                        scrollViewer.VerticalOffset, e.Delta)
+                    && !HasScrollableAncestor(scrollViewer, e.Delta))
+                {
+                    // Measured in notches, not in the user's scroll step - the band is a fixed
+                    // tactile response, not a fraction of however far they like to travel.
+                    var px = (e.Delta / (double)ScrollPolicy.WheelDelta) * ScrollPolicy.OverscrollPixelsPerNotch;
+
+                    // Sign, carefully: a positive wheel delta means scrolling UP, and showing
+                    // overscroll at the top means translating the content DOWN, which is +Y.
+                    // Negating it here pushed the content further into the list instead, which is
+                    // why upward bounce did the opposite of what it should.
+                    Sliders.GetValue(scrollViewer, sv => new SelectionSlideAnimator(sv, () => CurrentSmoothing(self), self._fileLogger))
+                           .Bounce(px);
+                    e.Handled = true;
+                    return;
+                }
+
                 // Deliberately left unhandled so it bubbles: a list already at its end should hand
                 // the wheel to whatever contains it, which is what WPF does by default.
                 return;
@@ -126,7 +146,18 @@ namespace SuperScroll.Services
             var pixels = ScrollPolicy.DeltaToPixels(e.Delta, step);
 
             var animator = Animators.GetValue(scrollViewer, sv => new ScrollAnimator(sv, () => CurrentSmoothing(self)));
-            animator.AddDelta(pixels);
+            var overflow = animator.AddDelta(pixels);
+
+            // Ran out of list part-way through this notch. Carry what was left into the band so
+            // arriving at speed flows into the stretch instead of stopping and starting again.
+            if (Math.Abs(overflow) > 0.5 &&
+                settings.EnableOverscrollBounce &&
+                !HasScrollableAncestor(scrollViewer, e.Delta))
+            {
+                var notches = overflow / step;
+                Sliders.GetValue(scrollViewer, sv => new SelectionSlideAnimator(sv, () => CurrentSmoothing(self), self._fileLogger))
+                       .Bounce(notches * ScrollPolicy.OverscrollPixelsPerNotch);
+            }
 
             // Ours now. Without this the ScrollViewer also applies its own jump and the two fight,
             // producing exactly the stutter this plugin exists to remove.
@@ -206,6 +237,40 @@ namespace SuperScroll.Services
             // only the pixels are catching up. Nothing re-triggers because nothing moved.
             var slider = Sliders.GetValue(scrollViewer, sv => new SelectionSlideAnimator(sv, () => CurrentSmoothing(self), self._fileLogger));
             slider.Slide(e.VerticalChange);
+        }
+
+        // Whether something further out could still scroll in this direction.
+        //
+        // The bounce must not steal the wheel from a parent scroller. A list inside a scrollable
+        // page is at its end constantly, and bouncing there would trap the wheel in the inner list
+        // and make the page unscrollable - a far worse bug than a missing flourish.
+        private static bool HasScrollableAncestor(DependencyObject start, int wheelDelta)
+        {
+            var current = VisualTreeHelper.GetParent(start);
+            var hops = 0;
+
+            while (current != null && hops++ < 60)
+            {
+                var sv = current as ScrollViewer;
+                if (sv != null &&
+                    ScrollPolicy.ShouldHandle(true, sv.ExtentHeight, sv.ViewportHeight, sv.VerticalOffset, wheelDelta))
+                {
+                    return true;
+                }
+                current = VisualTreeHelper.GetParent(current);
+            }
+            return false;
+        }
+
+        // Entry point for the keyboard path, so both input routes share one animator per
+        // ScrollViewer instead of each keeping its own and fighting over the same transform.
+        internal static void BounceFor(ScrollViewer scrollViewer, double deltaPixels)
+        {
+            var self = _active;
+            if (self == null || !self._enabled || scrollViewer == null) return;
+
+            Sliders.GetValue(scrollViewer, sv => new SelectionSlideAnimator(sv, () => CurrentSmoothing(self), self._fileLogger))
+                   .Bounce(deltaPixels);
         }
 
         private static double CurrentSmoothing(ScrollEnhancer self)

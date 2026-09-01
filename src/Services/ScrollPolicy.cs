@@ -227,6 +227,146 @@ namespace SuperScroll.Services
             return 0; // already framed
         }
 
+        // --- Overscroll bounce ---
+        //
+        // The rubber band: pushing against the end of a list moves it a little, and pushing harder
+        // moves it progressively less. That resistance is the whole effect - a linear overscroll
+        // that simply stops at a cap reads as a bug, because the list appears to break free and
+        // then jam. Diminishing returns reads as elastic.
+
+        public const double MaxOverscrollPixels = 48.0;
+
+        // What ONE wheel notch contributes to the RAW push, before the curve reduces it.
+        //
+        // Fixed, not derived from the user's scroll step. Deriving it was wrong: at the shipped
+        // preset a notch is worth 816px, so even a small fraction of it saturated the whole band on
+        // the very first notch and the bounce appeared as an instant jump to its limit. The bounce
+        // is a tactile constant - how hard the end of a list pushes back should not change because
+        // someone prefers longer scrolls.
+        // Scaled with MaxOverscrollPixels rather than tuned independently. The curve's shape is
+        // set by the ratio between the two, so changing only the limit would alter how much of the
+        // band one notch consumes and quietly change the feel as well as the distance.
+        public const double OverscrollPixelsPerNotch = 31.0;
+
+
+
+        // How long the band stays stretched after the last push before springing back. Long enough
+        // to outlast the gap between wheel notches during a continuous scroll (which is well under
+        // 100ms), short enough that the release still feels like a direct response to stopping.
+        public const double OverscrollHoldMs = 120.0;
+
+        // How long ExtentHeight must hold still before the bottom of a list is treated as a real
+        // boundary. A virtualized panel refines its extent as tiles realize, so the bottom bound
+        // moves during exactly the approach that would otherwise trigger a bounce against it.
+        public const double ExtentSettleMs = 100.0;
+
+        // The rubber band, in two parts: what has been pushed, and how far that shows.
+        //
+        // Separated because the first is unbounded and the second is not. The earlier version
+        // clamped the displacement itself, which made the limit a WALL - once the band reached
+        // 72px, further pushing produced exactly zero movement and it read as a hard stop rather
+        // than as resistance. macOS never stops; it just gives progressively less.
+        //
+        // AccumulateOverscroll therefore keeps an uncapped running total of what has been pushed,
+        // and DisplacementFor maps that through an asymptotic curve which approaches the limit
+        // without ever arriving. Every push still moves something - eventually by a fraction of a
+        // pixel, which is exactly how a real band behaves.
+
+        public static double AccumulateOverscroll(double currentRaw, double deltaPixels)
+        {
+            var next = currentRaw + deltaPixels;
+
+            // Pushing the other way releases without resistance, and stops at rest rather than
+            // continuing into the opposite band.
+            if (Math.Sign(next) != Math.Sign(currentRaw) && Math.Abs(currentRaw) > 0.001) return 0;
+            return next;
+        }
+
+        // d = max * (1 - 1 / (|raw| / max + 1)), signed.
+        //
+        // raw = max      -> 0.50 * max
+        // raw = 3 * max  -> 0.75 * max
+        // raw = infinity -> max, approached but never reached
+        // WebKit's rubber-band coefficient. Its formula is
+        //     b(x, d, c) = (1 - 1 / ((x * c / d) + 1)) * d
+        // and 0.55 is the value Safari and UIScrollView use. Lower means stiffer - the same push
+        // shows less - so this is the single number that decides how taut the band feels, separate
+        // from how far it can ever travel.
+        public const double RubberBandCoefficient = 0.55;
+
+        public static double DisplacementFor(double raw, double maxPixels)
+        {
+            if (maxPixels <= 0) return 0;
+
+            var magnitude = Math.Abs(raw);
+            if (magnitude < 0.001) return 0;
+
+            var eased = maxPixels * (1.0 - (1.0 / (((magnitude * RubberBandCoefficient) / maxPixels) + 1.0)));
+            return eased * Math.Sign(raw);
+        }
+
+        // --- Release: a critically damped spring ---
+        //
+        // Not exponential decay, which is what this used before and what most "smooth scroll"
+        // implementations reach for. The two look similar plotted and feel different in the hand:
+        //
+        //   Exponential  - fastest at the instant of release, then a long trailing tail. Reads as
+        //                  the band being let go of.
+        //   Spring       - starts at rest, accelerates, then settles. Reads as the band PULLING
+        //                  the content back, which is what a stretched band actually does.
+        //
+        // Critically damped specifically (damping = 2*sqrt(k*m), m = 1): the fastest return that
+        // never overshoots. Underdamped would wobble past zero, which no rubber band does; over-
+        // damped would crawl.
+        // Chosen by simulating the settle time rather than by feel: 650 returns from a full
+        // stretch in ~370ms, which is the range macOS bounce-back sits in. 120 took 733ms and read
+        // as sluggish; much above 800 and the release stops being a motion and becomes a snap.
+        public const double SpringStiffness = 650.0;
+
+        // Below these, the spring has arrived as far as anyone can see.
+        public const double SpringRestPixels = 0.3;
+        public const double SpringRestVelocity = 4.0;
+
+        // Semi-implicit Euler: velocity updated from acceleration first, then position from the NEW
+        // velocity. Explicit Euler (position first) injects energy at large timesteps and can make a
+        // damped spring gain amplitude instead of losing it - a wobble that grows rather than
+        // settles, on exactly the dropped frames where it is most visible.
+        public static void SpringStep(ref double position, ref double velocity, double elapsedMs)
+        {
+            if (elapsedMs <= 0) return;
+            if (elapsedMs > 64) elapsedMs = 64;   // a stall must not integrate one huge step
+
+            var dt = elapsedMs / 1000.0;
+            var damping = 2.0 * Math.Sqrt(SpringStiffness);
+
+            var acceleration = (-SpringStiffness * position) - (damping * velocity);
+
+            velocity += acceleration * dt;
+            position += velocity * dt;
+        }
+
+        public static bool SpringAtRest(double position, double velocity)
+        {
+            return Math.Abs(position) < SpringRestPixels && Math.Abs(velocity) < SpringRestVelocity;
+        }
+
+        // Whether a wheel event at the end of a list should bounce rather than be passed upward.
+        // Only when the list can scroll at all - content that fits its viewport has no end to push
+        // against, and bouncing it would be movement where the user expects none.
+        public static bool ShouldBounce(bool enabled, double extentHeight, double viewportHeight, double currentOffset, int wheelDelta)
+        {
+            if (!enabled) return false;
+            if (wheelDelta == 0) return false;
+            if (viewportHeight <= 0) return false;
+            if (extentHeight <= viewportHeight) return false;
+
+            var maxOffset = extentHeight - viewportHeight;
+            if (wheelDelta > 0 && currentOffset <= 0.5) return true;              // pushing past the top
+            if (wheelDelta < 0 && currentOffset >= maxOffset - 0.5) return true;  // pushing past the bottom
+
+            return false;
+        }
+
         public static double Clamp(double value, double min, double max)
         {
             if (max < min) return min;

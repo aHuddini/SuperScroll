@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using Playnite.SDK;
@@ -114,6 +116,56 @@ namespace SuperScroll
             else if (_repeatPatcher.IsPatched)
             {
                 _repeatPatcher.Restore();
+            }
+        }
+
+        // Writes the bench out beside the plugin's data and opens it, with the current settings
+        // carried in the URL fragment so it shows what the reader actually has configured.
+        //
+        // Rewritten every time rather than written once: the file is a snapshot of an embedded
+        // resource, and a stale copy left over from an older version would quietly preview
+        // behaviour the plugin no longer has.
+        public void OpenTuningBench()
+        {
+            try
+            {
+                var path = Path.Combine(GetPluginUserDataPath(), "bench.html");
+
+                var asm = System.Reflection.Assembly.GetExecutingAssembly();
+                var name = asm.GetManifestResourceNames()
+                    .FirstOrDefault(n => n.EndsWith("bench.html", StringComparison.OrdinalIgnoreCase));
+
+                if (name == null)
+                {
+                    Logger.Error("Tuning bench resource missing from the assembly");
+                    return;
+                }
+
+                using (var stream = asm.GetManifestResourceStream(name))
+                using (var file = File.Create(path))
+                {
+                    stream.CopyTo(file);
+                }
+
+                var s = _settingsViewModel.Settings;
+
+                // InvariantCulture, deliberately: a comma decimal separator would arrive as an
+                // unparseable value and silently fall back to the defaults, which is the one thing
+                // this feature exists to avoid.
+                var fragment = string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                    "#s={0:0.00}&l={1:0.#}&h={2:0}", s.Smoothing, s.LinesPerNotch, s.LineHeightPixels);
+
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = new Uri(path).AbsoluteUri + fragment,
+                    UseShellExecute = true
+                });
+
+                _fileLogger.Info($"Tuning bench opened with {fragment}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Failed to open the tuning bench");
             }
         }
 

@@ -95,6 +95,8 @@ namespace SuperScroll
             return true; // every value is range-clamped in its setter, so nothing can be out of bounds here
         }
 
+        public RelayCommand<object> OpenBenchCommand => new RelayCommand<object>(_ => _plugin.OpenTuningBench());
+
         public RelayCommand<object> ResetCommand => new RelayCommand<object>(_ =>
         {
             // Copies from a pristine instance rather than restating defaults. Same reason as the
@@ -113,6 +115,7 @@ namespace SuperScroll
             Settings.KeyRepeatInitialDelayMs = pristine.KeyRepeatInitialDelayMs;
             Settings.KeyRepeatIntervalMs = pristine.KeyRepeatIntervalMs;
             Settings.PaceRepeatToLayout = pristine.PaceRepeatToLayout;
+            Settings.EnableOverscrollBounce = pristine.EnableOverscrollBounce;
             Settings.EnableDebugLogging = pristine.EnableDebugLogging;
         });
     }

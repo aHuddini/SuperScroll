@@ -24,6 +24,7 @@ namespace SuperScroll
         private double keyRepeatInitialDelayMs = Constants.DefaultKeyRepeatInitialDelayMs;
         private double keyRepeatIntervalMs = Constants.DefaultKeyRepeatIntervalMs;
         private bool paceRepeatToLayout = false;
+        private bool enableOverscrollBounce = true;
         private bool enableDebugLogging = false;
 
         public bool EnableSmoothScrolling
@@ -147,6 +148,15 @@ namespace SuperScroll
         {
             get => paceRepeatToLayout;
             set { paceRepeatToLayout = value; OnPropertyChanged(); }
+        }
+
+        // Rubber-band at the ends of a list. On by default: it is subtle, costs nothing when the
+        // list is not at an end, and its absence is what makes hitting the bottom feel like a stop
+        // rather than an edge.
+        public bool EnableOverscrollBounce
+        {
+            get => enableOverscrollBounce;
+            set { enableOverscrollBounce = value; OnPropertyChanged(); }
         }
 
         public bool EnableDebugLogging

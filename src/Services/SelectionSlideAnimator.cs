@@ -35,6 +35,10 @@ namespace SuperScroll.Services
         private FrameworkElement _content;
         private bool _running;
         private long _lastTicks;
+        private long _holdUntilTicks;   // while set, the band is held rather than springing back
+        private double _bounceTarget;   // where the band is stretching TO, eased into rather than snapped
+        private double _bounceRaw;      // uncapped total pushed, so the limit is a curve and not a wall
+        private double _springVelocity; // carried into the release, so arriving fast returns fast
 
         public SelectionSlideAnimator(ScrollViewer scrollViewer, Func<double> getSmoothing, FileLogger fileLogger)
         {
@@ -57,14 +61,56 @@ namespace SuperScroll.Services
             // Clamped so a burst of held-key moves cannot build an offset larger than the panel has
             // realized rows to cover.
             _transform.Y = ScrollPolicy.Clamp(pending, -MaxSlidePixels, MaxSlidePixels);
+            _holdUntilTicks = 0;
+            _bounceTarget = 0;
+            _bounceRaw = 0;
+            _springVelocity = 0;
 
             Start();
             return true;
         }
 
+        // Pushes the content against the end of the list and lets it spring back.
+        //
+        // Uses the same transform and the same easing loop as the slide, because it is the same
+        // motion: something is displaced and eases to zero. Only the way the displacement is
+        // arrived at differs - a slide takes the whole distance at once, a bounce accumulates it
+        // against rising resistance.
+        public void Bounce(double deltaPixels)
+        {
+            if (!EnsureTransform()) return;
+
+            // Sets a TARGET and lets the loop ease into it, rather than assigning the transform
+            // outright. Assigning it produced a static jump: the displacement appeared in one
+            // frame, so the stretch was never seen - only the release was. Easing both directions
+            // is what makes it read as elastic in both.
+            // Arriving at speed should return at speed. Seeding velocity from the push is what
+            // makes a hard arrival snap back harder than a gentle one, rather than every release
+            // looking identical regardless of how it started.
+            _springVelocity += deltaPixels * 2.0;
+
+            _bounceRaw = ScrollPolicy.AccumulateOverscroll(_bounceRaw, deltaPixels);
+            _bounceTarget = ScrollPolicy.DisplacementFor(_bounceRaw, ScrollPolicy.MaxOverscrollPixels);
+
+            // Hold it while input keeps arriving, and only spring back once it stops.
+            //
+            // Without this the band decays toward zero between every notch while each new notch
+            // re-stretches it, so a continuous push produces rapid alternation rather than a
+            // stretch - it reads as a flicker, not a rubber band. Holding is what makes it feel
+            // like resistance being maintained rather than repeatedly overcome.
+            _holdUntilTicks = DateTime.UtcNow.Ticks +
+                (long)(ScrollPolicy.OverscrollHoldMs * TimeSpan.TicksPerMillisecond);
+
+            Start();
+        }
+
         public void Cancel()
         {
             Stop();
+            _holdUntilTicks = 0;
+            _bounceTarget = 0;
+            _bounceRaw = 0;
+            _springVelocity = 0;
             if (_transform != null) _transform.Y = 0;
         }
 
@@ -126,11 +172,51 @@ namespace SuperScroll.Services
                 _lastTicks = now;
 
                 var smoothing = ScrollPolicy.EffectiveSmoothing(_getSmoothing(), elapsedMs);
-                var next = ScrollPolicy.Step(_transform.Y, 0, smoothing, elapsedMs);
+                var holding = _holdUntilTicks > 0 && now < _holdUntilTicks;
+
+                double next;
+
+                if (_bounceRaw != 0 || _springVelocity != 0)
+                {
+                    if (holding)
+                    {
+                        // Still being pushed: ease out toward the stretch the curve says this much
+                        // pushing earns, and keep the spring's velocity in step so the release
+                        // starts from the motion already happening rather than from a standstill.
+                        next = ScrollPolicy.Step(_transform.Y, _bounceTarget, smoothing, elapsedMs);
+                        _springVelocity = elapsedMs > 0 ? (next - _transform.Y) / (elapsedMs / 1000.0) : 0;
+                    }
+                    else
+                    {
+                        // Released. A critically damped spring rather than more easing - it starts
+                        // from the velocity above, accelerates, and settles without overshooting.
+                        _holdUntilTicks = 0;
+                        _bounceRaw = 0;
+                        _bounceTarget = 0;
+
+                        next = _transform.Y;
+                        ScrollPolicy.SpringStep(ref next, ref _springVelocity, elapsedMs);
+
+                        if (ScrollPolicy.SpringAtRest(next, _springVelocity))
+                        {
+                            _transform.Y = 0;
+                            _springVelocity = 0;
+                            Stop();
+                            return;
+                        }
+
+                        _transform.Y = next;
+                        return;
+                    }
+                }
+                else
+                {
+                    next = ScrollPolicy.Step(_transform.Y, _bounceTarget, smoothing, elapsedMs);
+                }
 
                 _transform.Y = next;
 
-                if (Math.Abs(next) < ScrollPolicy.SettleThresholdPixels)
+                if (!holding && Math.Abs(next) < ScrollPolicy.SettleThresholdPixels)
                 {
                     // Land on exactly zero. A residual fraction of a pixel left on a RenderTransform
                     // blurs text on the whole list until something else happens to clear it.

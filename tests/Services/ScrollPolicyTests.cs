@@ -186,6 +186,264 @@ namespace SuperScroll.Tests.Services
             Assert.Greater(ScrollPolicy.ScaleSmoothing(-1.0, Frame60), 0.0);
         }
 
+        // --- Overscroll bounce ---
+
+        [Test]
+        public void Overscroll_ResistanceMakesEachPushMoveLess()
+        {
+            // The property that makes it read as elastic rather than broken: equal pushes must
+            // travel progressively shorter distances.
+            const double notch = -ScrollPolicy.OverscrollPixelsPerNotch;
+            const double max = ScrollPolicy.MaxOverscrollPixels;
+
+            double raw = 0, prev = 0, prevStep = double.MaxValue;
+            for (var i = 0; i < 5; i++)
+            {
+                raw = ScrollPolicy.AccumulateOverscroll(raw, notch);
+                var d = ScrollPolicy.DisplacementFor(raw, max);
+                var step = Math.Abs(d - prev);
+
+                Assert.Less(step, prevStep, $"push {i + 1} must move less than the one before");
+                prev = d;
+                prevStep = step;
+            }
+        }
+
+        [Test]
+        public void Overscroll_HasNoWall_EveryPushStillMovesSomething()
+        {
+            // The reason displacement is not clamped. A hard limit makes the end of the band a
+            // wall: further pushing produces exactly zero movement, which reads as a hard stop
+            // rather than as resistance. A real band always gives a little more.
+            const double max = ScrollPolicy.MaxOverscrollPixels;
+
+            double raw = 0;
+            for (var i = 0; i < 40; i++)
+            {
+                raw = ScrollPolicy.AccumulateOverscroll(raw, -ScrollPolicy.OverscrollPixelsPerNotch);
+            }
+
+            var deep = ScrollPolicy.DisplacementFor(raw, max);
+            var deeper = ScrollPolicy.DisplacementFor(
+                ScrollPolicy.AccumulateOverscroll(raw, -ScrollPolicy.OverscrollPixelsPerNotch), max);
+
+            Assert.Greater(Math.Abs(deeper), Math.Abs(deep), "there must be no point at which pushing does nothing");
+        }
+
+        [Test]
+        public void Overscroll_ApproachesTheLimitButNeverReachesIt()
+        {
+            const double max = ScrollPolicy.MaxOverscrollPixels;
+
+            double raw = 0;
+            for (var i = 0; i < 200; i++)
+            {
+                raw = ScrollPolicy.AccumulateOverscroll(raw, -ScrollPolicy.OverscrollPixelsPerNotch);
+            }
+
+            var d = Math.Abs(ScrollPolicy.DisplacementFor(raw, max));
+            Assert.Less(d, max, "the limit is asymptotic, not attainable");
+            Assert.Greater(d, max * 0.9, "but sustained pushing should get close to it");
+        }
+
+        [Test]
+        public void Overscroll_PullingBackIsNotResisted()
+        {
+            var stretched = ScrollPolicy.AccumulateOverscroll(0, -ScrollPolicy.OverscrollPixelsPerNotch);
+            var released = ScrollPolicy.AccumulateOverscroll(stretched, ScrollPolicy.OverscrollPixelsPerNotch * 0.5);
+
+            Assert.Less(Math.Abs(released), Math.Abs(stretched));
+        }
+
+        [Test]
+        public void Overscroll_ReleaseStopsAtRestRatherThanCrossingOver()
+        {
+            // Regression: a large delta the other way used to fling the band from one extreme to
+            // the other, which looks like a glitch rather than a release.
+            var stretched = ScrollPolicy.AccumulateOverscroll(0, -200);
+            var released = ScrollPolicy.AccumulateOverscroll(stretched, 500);
+
+            Assert.AreEqual(0, released, 1e-9, "releasing must settle at rest, not overshoot into the opposite band");
+        }
+
+        [Test]
+        public void OneNotchIsVisibleButNowhereNearTheLimit()
+        {
+            // Regression: the band was fed the user's scroll step, and at the shipped preset a
+            // notch is worth 816px - so the first notch saturated it and the bounce appeared as an
+            // instant jump to its limit rather than a stretch.
+            var raw = ScrollPolicy.AccumulateOverscroll(0, -ScrollPolicy.OverscrollPixelsPerNotch);
+            var d = Math.Abs(ScrollPolicy.DisplacementFor(raw, ScrollPolicy.MaxOverscrollPixels));
+
+            Assert.Greater(d, 4.0, "one notch must be clearly visible");
+            Assert.Less(d, ScrollPolicy.MaxOverscrollPixels * 0.6, "but must leave somewhere further to go");
+        }
+
+        [Test]
+        public void OverscrollHold_OutlastsTheGapBetweenWheelNotches()
+        {
+            // The hold is what stops a continuous push reading as a flicker: the band must not
+            // start springing back between one notch and the next.
+            Assert.Greater(ScrollPolicy.OverscrollHoldMs, 100.0);
+        }
+
+        [Test]
+        public void ArrivingAtAnEnd_LeavesOverflowToCarryIntoTheBand()
+        {
+            // The handover that makes arrival continuous. A notch that runs past the end of the
+            // list must leave a measurable remainder, because that remainder is what stretches the
+            // band. Without it the scroll stops dead at speed and the bounce starts from nothing on
+            // the following notch - two motions where the eye expects one.
+            const double max = 500;
+            const double notch = 816;   // the shipped preset's step
+
+            var desired = 100 - (-notch);            // scrolling down from near the end
+            var clamped = ScrollPolicy.Clamp(desired, 0, max);
+            var overflow = -(desired - clamped);
+
+            Assert.Less(overflow, -0.5, "running past the end must leave a remainder, signed like the delta");
+            Assert.AreEqual(clamped, max, 1e-9, "and the view itself still stops exactly at the end");
+        }
+
+        [Test]
+        public void TheTopBoundIsExactAndTheBottomIsNot()
+        {
+            // States the asymmetry that made arrival misbehave at the bottom only. Zero is a real
+            // number that never moves; the bottom is ExtentHeight - ViewportHeight, and a
+            // virtualized panel refines ExtentHeight while that bottom is being approached.
+            // Overflow is therefore trustworthy at the top immediately, and at the bottom only once
+            // the extent has held still.
+            Assert.Greater(ScrollPolicy.ExtentSettleMs, 0,
+                "there must be a settling window, or the bottom bound is trusted while it is still moving");
+            Assert.Less(ScrollPolicy.ExtentSettleMs, ScrollPolicy.OverscrollHoldMs + 1,
+                "and it must be shorter than the band's hold, or arrival momentum is lost every time");
+        }
+
+        [Test]
+        public void NotArrivingAtAnEnd_LeavesNoOverflow()
+        {
+            const double max = 5000;
+            var desired = 100 - (-816);
+            var clamped = ScrollPolicy.Clamp(desired, 0, max);
+
+            Assert.AreEqual(0, -(desired - clamped), 1e-9, "an ordinary scroll must hand nothing to the band");
+        }
+
+        // --- Spring release ---
+
+        [Test]
+        public void Spring_NeverOvershootsPastRest()
+        {
+            // Critically damped, by definition. An underdamped spring wobbles past zero, and no
+            // rubber band does that - it would read as the list bouncing twice.
+            double x = ScrollPolicy.MaxOverscrollPixels, v = 0;
+            var mostNegative = 0.0;
+
+            for (var i = 0; i < 300; i++)
+            {
+                ScrollPolicy.SpringStep(ref x, ref v, 1000.0 / 60.0);
+                if (x < mostNegative) mostNegative = x;
+                if (ScrollPolicy.SpringAtRest(x, v)) break;
+            }
+
+            Assert.GreaterOrEqual(mostNegative, -0.5, "the release must not cross rest and come back");
+        }
+
+        [Test]
+        public void Spring_SettlesInAboutTheRightTime()
+        {
+            // Tuned by simulation, so it is pinned by simulation. Much slower reads as sluggish,
+            // much faster stops being a motion and becomes a snap.
+            double x = ScrollPolicy.MaxOverscrollPixels, v = 0;
+            var ms = 0.0;
+
+            for (var i = 0; i < 600; i++)
+            {
+                ScrollPolicy.SpringStep(ref x, ref v, 1000.0 / 60.0);
+                ms += 1000.0 / 60.0;
+                if (ScrollPolicy.SpringAtRest(x, v)) break;
+            }
+
+            Assert.Greater(ms, 200, "faster than this is a snap, not a release");
+            Assert.Less(ms, 550, "slower than this reads as sluggish");
+        }
+
+        [Test]
+        public void Spring_AcceleratesOutOfRest()
+        {
+            // The property that separates a spring from exponential decay: released from rest it
+            // speeds UP before slowing down, where decay is fastest at the instant of release.
+            //
+            // Sampled at 2ms rather than at a frame, deliberately. Peak velocity arrives at
+            // 1/omega, which at this stiffness is ~39ms - barely two 60Hz frames - so a frame-sized
+            // step lands past the acceleration and reads as deceleration. The physics is correct;
+            // 60Hz simply cannot resolve it. Asserting it at frame rate would be asserting
+            // something false about a correct implementation.
+            double x = ScrollPolicy.MaxOverscrollPixels, v = 0;
+
+            var before1 = x;
+            ScrollPolicy.SpringStep(ref x, ref v, 2.0);
+            var step1 = Math.Abs(x - before1);
+
+            var before2 = x;
+            ScrollPolicy.SpringStep(ref x, ref v, 2.0);
+            var step2 = Math.Abs(x - before2);
+
+            Assert.Greater(step2, step1, "a spring accelerates out of rest; decay would decelerate");
+        }
+
+        [Test]
+        public void Spring_ALongStalledFrameCannotExplode()
+        {
+            // Semi-implicit Euler is stable, but only if the timestep stays sane. A 2-second frame
+            // integrated in one go would fling the content off screen.
+            double x = ScrollPolicy.MaxOverscrollPixels, v = 0;
+            ScrollPolicy.SpringStep(ref x, ref v, 2000);
+
+            Assert.Less(Math.Abs(x), ScrollPolicy.MaxOverscrollPixels * 2,
+                "a stalled frame must be clamped, not integrated whole");
+        }
+
+        [Test]
+        public void RubberBandCoefficient_MatchesWebKit()
+        {
+            // 0.55 is the value Safari and UIScrollView use. Recorded as a test so it reads as a
+            // referenced constant rather than a number somebody liked.
+            Assert.AreEqual(0.55, ScrollPolicy.RubberBandCoefficient, 1e-9);
+        }
+
+        [Test]
+        public void ShouldBounce_OnlyAtTheEnds()
+        {
+            Assert.IsTrue(ScrollPolicy.ShouldBounce(true, 5000, 800, 0, 120), "at the top, pushing up");
+            Assert.IsTrue(ScrollPolicy.ShouldBounce(true, 5000, 800, 4200, -120), "at the bottom, pushing down");
+            Assert.IsFalse(ScrollPolicy.ShouldBounce(true, 5000, 800, 2000, -120), "mid-list is not an end");
+            Assert.IsFalse(ScrollPolicy.ShouldBounce(true, 5000, 800, 0, -120), "at the top, pushing INTO the list");
+        }
+
+        [Test]
+        public void ShouldBounce_ContentThatFitsHasNoEndToPushAgainst()
+        {
+            // Bouncing a list with nothing to scroll would be movement where none is expected.
+            Assert.IsFalse(ScrollPolicy.ShouldBounce(true, 500, 800, 0, -120));
+        }
+
+        [Test]
+        public void ShouldBounce_Disabled_NeverBounces()
+        {
+            Assert.IsFalse(ScrollPolicy.ShouldBounce(false, 5000, 800, 0, 120));
+        }
+
+        [Test]
+        public void ShippedDefaultsAreHuddiniFlow()
+        {
+            // The defaults are a named preset, not arbitrary numbers - changing one without the
+            // others silently produces a configuration nobody chose.
+            Assert.AreEqual(0.30, Constants.DefaultSmoothing, 1e-9);
+            Assert.AreEqual(6.0, Constants.DefaultLinesPerNotch, 1e-9);
+            Assert.AreEqual(136.0, Constants.DefaultLineHeightPixels, 1e-9);
+        }
+
         [Test]
         public void Clamp_HandlesInvertedBounds()
         {

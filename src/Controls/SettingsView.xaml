@@ -89,6 +89,17 @@
                     <TextBlock Style="{StaticResource SsHint}" Margin="28,4,0,12"
                                Text="The pixel height one line stands for. Raise it if a notch feels short in grid views, lower it for dense list views. Default 48."/>
 
+                    <CheckBox Style="{StaticResource SsToggle}" Margin="28,6,0,0"
+                              Content="Bounce at the ends of a list"
+                              IsChecked="{Binding Settings.EnableOverscrollBounce}"/>
+                    <TextBlock Style="{StaticResource SsHint}" Margin="56,4,0,12"
+                               Text="Default: On. Reaching the top or bottom gives a little and springs back, so an end feels like an edge rather than a dead stop. Pushing harder moves it less. Applies to the wheel and to arrow keys, and never takes the wheel from a list that sits inside a scrollable page."/>
+
+                    <Button Style="{StaticResource SsButton}" Content="Preview these settings in your browser"
+                            Margin="28,4,0,4" Command="{Binding OpenBenchCommand}"/>
+                    <TextBlock Style="{StaticResource SsHint}" Margin="28,4,0,12"
+                               Text="Opens a side-by-side comparison — Playnite's scrolling on the left, yours on the right, same wheel input — loaded with the values above so you can feel a change before committing to it."/>
+
                 </StackPanel>
             </StackPanel>
 
@@ -136,7 +147,7 @@
                 <CheckBox Style="{StaticResource SsToggle}" Content="Use SuperScroll's key repeat instead of Windows'"
                           IsChecked="{Binding Settings.EnableKeyRepeatOverride}"/>
                 <TextBlock Style="{StaticResource SsHint}" Margin="28,4,0,10"
-                           Text="Default: Off. Applies to the arrow keys and Page Up / Page Down while navigating. Typing is never affected — a held arrow inside a search box is left to the text box. Nothing outside Playnite changes."/>
+                           Text="Default: Off. Applies to the arrow keys and Page Up / Page Down while navigating. Also stops Playnite discarding presses that arrive within 150 ms of each other, so pressing quickly by hand registers every press. Typing is never affected, and nothing outside Playnite changes."/>
 
                 <StackPanel IsEnabled="{Binding Settings.EnableKeyRepeatOverride}">
                     <StackPanel Orientation="Horizontal" Margin="28,6,0,0">

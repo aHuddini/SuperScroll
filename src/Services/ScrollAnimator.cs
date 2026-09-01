@@ -26,6 +26,8 @@ namespace SuperScroll.Services
         private bool _running;
         private long _lastTicks;
         private double _starvedMs;   // time spent on late frames, for the give-up ceiling
+        private double _lastExtent;  // to notice the estimated bottom bound still moving
+        private long _extentMovedTicks;
 
         public ScrollAnimator(ScrollViewer scrollViewer, Func<double> getSmoothing)
         {
@@ -37,7 +39,15 @@ namespace SuperScroll.Services
         public double TargetOffset => _targetOffset;
 
         // Extends the journey rather than restarting it - see ScrollPolicy.AccumulateTarget.
-        public void AddDelta(double deltaPixels)
+        // Returns the part of the delta that could NOT be used because the list ran out, in the
+        // same units and sign it was given. Zero in the ordinary case.
+        //
+        // That leftover used to be discarded, and discarding it is what made arriving at an end
+        // during a fast scroll feel like hitting something. The view halted at the boundary while
+        // still moving quickly, and the bounce then began from nothing on the following notch -
+        // two separate motions where there should be one. Handing the excess to the band instead
+        // means the speed you arrive with is the speed that stretches it.
+        public double AddDelta(double deltaPixels)
         {
             var maxOffset = Math.Max(0, _scrollViewer.ExtentHeight - _scrollViewer.ViewportHeight);
 
@@ -46,8 +56,33 @@ namespace SuperScroll.Services
             // the view back to wherever the last fling ended.
             if (!_running) _targetOffset = _scrollViewer.VerticalOffset;
 
-            _targetOffset = ScrollPolicy.AccumulateTarget(_targetOffset, deltaPixels, 0, maxOffset);
+            var desired = _targetOffset - deltaPixels;
+            var clamped = ScrollPolicy.Clamp(desired, 0, maxOffset);
+
+            _targetOffset = clamped;
             Start();
+
+            // The bottom bound is an ESTIMATE while the bottom bound is being approached, and that
+            // asymmetry is why arrival misbehaved there and never at the top. Zero is exact and
+            // never moves; maxOffset is ExtentHeight - ViewportHeight, and a virtualized panel
+            // refines ExtentHeight as tiles realize. Clamping against a stale, too-small maxOffset
+            // reports overflow before the end has really been reached - so the band stretches while
+            // the view still has somewhere to go, and the two move at once.
+            //
+            // So overflow is withheld while the extent is still settling. A notch or two of
+            // momentum is lost in that window; a bounce fired against a boundary that then moves is
+            // visible every time.
+            var extentNow = _scrollViewer.ExtentHeight;
+            if (Math.Abs(extentNow - _lastExtent) > 0.5)
+            {
+                _lastExtent = extentNow;
+                _extentMovedTicks = DateTime.UtcNow.Ticks;
+            }
+
+            var sinceExtentMovedMs = (DateTime.UtcNow.Ticks - _extentMovedTicks) / (double)TimeSpan.TicksPerMillisecond;
+            if (sinceExtentMovedMs < ScrollPolicy.ExtentSettleMs) return 0;
+
+            return -(desired - clamped);
         }
 
         // True while this animator is the one writing the offset. The navigation watcher uses it to
