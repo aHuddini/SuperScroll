@@ -1,0 +1,482 @@
+<title>SuperScroll Tuning Bench</title>
+<style>
+  /* Committed to a single dark look on purpose: this page is a preview of the plugin's own
+     settings surface, so it uses the plugin's palette rather than adapting to the viewer's
+     theme. Every colour is painted explicitly so it holds on any host ground. */
+  :root{
+    --ground:#12161C; --surface:#1A212B; --surface-hi:#232C38;
+    --stroke:#2E3A48; --stroke-hi:#46596D;
+    --accent:#5BD1B0; --accent-dim:#2E7F6C;
+    --old:#C8A24B; --old-dim:#6B5626;
+    --text:#E6EBF2; --muted:#94A3B4; --faint:#6B7A88;
+    --sans:'Segoe UI Variable Text','Segoe UI',system-ui,-apple-system,sans-serif;
+    --mono:ui-monospace,'Cascadia Mono',Consolas,'SF Mono',monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ground); color:var(--text);
+    font-family:var(--sans); font-size:15px; line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:40px 24px 72px}
+
+  header{margin-bottom:28px}
+  h1{
+    font-size:29px; margin:0 0 6px; font-weight:700; letter-spacing:-.02em;
+    color:var(--text); text-wrap:balance;
+  }
+  .sub{color:var(--muted); font-size:15px; margin:0; max-width:64ch}
+
+  .eyebrow{
+    font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--faint); margin:0 0 10px;
+  }
+
+  /* ---- comparison panes ---- */
+  .stage{
+    display:grid; grid-template-columns:1fr 1fr; gap:18px; margin:0 0 10px;
+  }
+  @media (max-width:760px){ .stage{grid-template-columns:1fr} }
+
+  .pane{
+    background:var(--surface); border:1px solid var(--stroke); border-radius:10px;
+    overflow:hidden; display:flex; flex-direction:column;
+  }
+  .pane-head{
+    display:flex; align-items:baseline; gap:10px; justify-content:space-between;
+    padding:11px 14px; border-bottom:1px solid var(--stroke); background:var(--surface-hi);
+  }
+  .pane-name{font-size:13px; font-weight:600; letter-spacing:.01em}
+  .pane-tag{font-family:var(--mono); font-size:10.5px; letter-spacing:.09em; text-transform:uppercase}
+  .pane.old .pane-tag{color:var(--old)}
+  .pane.new .pane-tag{color:var(--accent)}
+
+  .viewport{height:290px; overflow:hidden; position:relative; background:var(--ground)}
+  .list{will-change:transform}
+  .row{
+    display:flex; align-items:center; gap:11px; padding:0 14px;
+    border-bottom:1px solid #1B222B;
+  }
+  .art{
+    width:26px; height:26px; border-radius:5px; flex:none;
+    background:linear-gradient(150deg,var(--surface-hi),#2C3846);
+    border:1px solid #313E4C;
+  }
+  .row .nm{font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .row .yr{margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--faint)}
+
+  /* Scroll position indicator down the right edge of each viewport. */
+  .railtrack{position:absolute; top:0; right:0; width:3px; height:100%; background:#161D25}
+  .railthumb{position:absolute; right:0; width:3px; border-radius:2px}
+  .pane.old .railthumb{background:var(--old-dim)}
+  .pane.new .railthumb{background:var(--accent-dim)}
+
+  .hint-bar{
+    text-align:center; color:var(--faint); font-size:12.5px; margin:0 0 26px;
+    font-family:var(--mono); letter-spacing:.03em;
+  }
+  .flick{
+    background:var(--surface); color:var(--text); border:1px solid var(--stroke);
+    border-radius:6px; padding:7px 15px; font-family:var(--sans); font-size:12.5px;
+    cursor:pointer; margin:0 5px;
+  }
+  .flick:hover{background:var(--surface-hi); border-color:var(--stroke-hi)}
+  .flick:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  /* ---- controls ---- */
+  .panel{
+    background:var(--surface); border:1px solid var(--stroke); border-radius:10px;
+    padding:20px 22px 8px; margin-bottom:20px;
+  }
+  .ctl{padding:14px 0; border-bottom:1px solid #222B36}
+  .ctl:last-child{border-bottom:0}
+  .ctl-top{display:flex; align-items:center; gap:14px; flex-wrap:wrap}
+  .ctl-name{font-size:14px; font-weight:600; min-width:118px}
+  input[type=range]{
+    -webkit-appearance:none; appearance:none; height:4px; border-radius:2px;
+    background:var(--surface-hi); flex:1; min-width:170px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:15px; height:15px; border-radius:50%;
+    background:linear-gradient(180deg,#FBFDFF,#B9C6D4); border:2px solid var(--ground); cursor:grab;
+  }
+  input[type=range]::-moz-range-thumb{
+    width:15px; height:15px; border-radius:50%;
+    background:linear-gradient(180deg,#FBFDFF,#B9C6D4); border:2px solid var(--ground); cursor:grab;
+  }
+  input[type=range]:focus-visible{outline:2px solid var(--accent); outline-offset:4px}
+  .val{
+    font-family:var(--mono); font-size:13px; font-variant-numeric:tabular-nums;
+    color:var(--accent); min-width:74px; text-align:right; font-weight:600;
+  }
+  .ctl-note{color:var(--muted); font-size:12.5px; margin:7px 0 0; max-width:78ch}
+  .ctl-note b{color:var(--text); font-weight:600}
+
+  /* ---- derived readouts ---- */
+  .facts{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:22px}
+  @media (max-width:640px){ .facts{grid-template-columns:1fr} }
+  .fact{
+    background:var(--surface); border:1px solid var(--stroke); border-radius:9px; padding:14px 16px;
+  }
+  .fact-k{
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--faint); margin-bottom:5px;
+  }
+  .fact-v{font-family:var(--mono); font-size:21px; font-variant-numeric:tabular-nums; color:var(--text)}
+  .fact-v small{font-size:12px; color:var(--muted); margin-left:3px}
+
+  /* ---- curve ---- */
+  .curvebox{
+    background:var(--surface); border:1px solid var(--stroke); border-radius:10px;
+    padding:16px 18px 12px; margin-bottom:26px;
+  }
+  canvas{width:100%; height:150px; display:block}
+  .legend{
+    display:flex; gap:20px; flex-wrap:wrap; margin-top:8px;
+    font-family:var(--mono); font-size:11px; color:var(--muted);
+  }
+  .swatch{display:inline-block; width:16px; height:2px; vertical-align:middle; margin-right:6px}
+
+  .presets{display:flex; gap:9px; flex-wrap:wrap; margin:2px 0 22px}
+  .preset{
+    background:var(--surface); color:var(--muted); border:1px solid var(--stroke);
+    border-radius:20px; padding:6px 15px; font-size:12.5px; cursor:pointer; font-family:var(--sans);
+  }
+  .preset:hover{border-color:var(--stroke-hi); color:var(--text)}
+  .preset[aria-pressed=true]{border-color:var(--accent); color:var(--accent); background:#16241F}
+  .preset:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  .note{
+    border-left:3px solid var(--accent); padding:2px 0 2px 15px; margin:0 0 8px;
+    color:var(--muted); font-size:13.5px; max-width:76ch;
+  }
+  .note b{color:var(--text); font-weight:600}
+  h2{font-size:17px; margin:34px 0 12px; font-weight:650; letter-spacing:-.01em}
+  @media (prefers-reduced-motion:reduce){ .list{transition:none !important} }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">SuperScroll v0.1.0</p>
+    <h1>Tuning Bench</h1>
+    <p id="yours" hidden style="display:inline-block;margin:0 0 10px;padding:5px 12px;border:1px solid var(--accent);border-radius:20px;color:var(--accent);font-family:var(--mono);font-size:11.5px;letter-spacing:.04em">
+      Loaded with your current SuperScroll settings
+    </p>
+    <p class="sub">Scroll inside either pane. Left is how Playnite scrolls today; right is SuperScroll with your current settings. Same wheel input, same list.</p>
+  </header>
+
+  <div class="stage" id="stage">
+    <div class="pane old">
+      <div class="pane-head"><span class="pane-name">Playnite</span><span class="pane-tag">jumps by row</span></div>
+      <div class="viewport" id="vpOld">
+        <div class="list" id="listOld"></div>
+        <div class="railtrack"><div class="railthumb" id="railOld"></div></div>
+      </div>
+    </div>
+    <div class="pane new">
+      <div class="pane-head"><span class="pane-name">SuperScroll</span><span class="pane-tag">eases by pixel</span></div>
+      <div class="viewport" id="vpNew">
+        <div class="list" id="listNew"></div>
+        <div class="railtrack"><div class="railthumb" id="railNew"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <p class="hint-bar">
+    <button class="flick" id="btnOne">One notch</button>
+    <button class="flick" id="btnFlick">Fast flick &times;5</button>
+    <button class="flick" id="btnTop">Back to top</button>
+  </p>
+
+  <h2>The three settings</h2>
+
+  <div class="presets" id="presets">
+    <button class="preset" data-s=".12" data-l="3" data-h="48">Glide</button>
+    <button class="preset" data-s=".25" data-l="3" data-h="48">Default</button>
+    <button class="preset" data-s=".45" data-l="4" data-h="48">Snappy</button>
+    <button class="preset" data-s=".80" data-l="3" data-h="48">Almost instant</button>
+  </div>
+
+  <div class="panel">
+    <div class="ctl">
+      <div class="ctl-top">
+        <span class="ctl-name">Smoothness</span>
+        <input type="range" id="sSmooth" min="0.05" max="0.95" step="0.05" value="0.25" aria-label="Smoothness">
+        <span class="val" id="vSmooth">0.25</span>
+      </div>
+      <p class="ctl-note">Controls <b>how it arrives</b>, not how far it goes. Each frame the view closes this fraction of whatever distance is left &mdash; so it starts fast and settles softly. <b>Low glides for a long time; high snaps into place.</b> This is the one that changes the feel.</p>
+    </div>
+
+    <div class="ctl">
+      <div class="ctl-top">
+        <span class="ctl-name">Lines per notch</span>
+        <input type="range" id="sLines" min="1" max="12" step="0.5" value="3" aria-label="Lines per notch">
+        <span class="val" id="vLines">3</span>
+      </div>
+      <p class="ctl-note">Controls <b>how far</b> one click of the wheel travels, counted in lines. Windows' own default is 3, so leaving it there means SuperScroll changes the feel without changing the distance you're used to.</p>
+    </div>
+
+    <div class="ctl">
+      <div class="ctl-top">
+        <span class="ctl-name">Line height</span>
+        <input type="range" id="sHeight" min="8" max="200" step="4" value="48" aria-label="Line height">
+        <span class="val" id="vHeight">48 px</span>
+      </div>
+      <p class="ctl-note">What a &ldquo;line&rdquo; is worth in pixels. Playnite's rows are far taller than a line of text, so this is the conversion. <b>Raise it if a notch feels short in grid view; lower it for dense list views.</b> Together with the setting above it decides the distance per notch.</p>
+    </div>
+  </div>
+
+  <div class="facts">
+    <div class="fact">
+      <div class="fact-k">Distance per notch</div>
+      <div class="fact-v" id="fPx">144<small>px</small></div>
+    </div>
+    <div class="fact">
+      <div class="fact-k">Rows per notch</div>
+      <div class="fact-v" id="fRows">3.0<small>rows</small></div>
+    </div>
+    <div class="fact">
+      <div class="fact-k">Time to settle</div>
+      <div class="fact-v" id="fMs">98<small>ms</small></div>
+    </div>
+  </div>
+
+  <div class="curvebox">
+    <p class="eyebrow" style="margin-bottom:8px">Approach curve &mdash; one notch, first 400&nbsp;ms</p>
+    <canvas id="curve" width="1000" height="300" aria-label="Graph comparing how each approach covers the distance of one wheel notch over time"></canvas>
+    <div class="legend">
+      <span><span class="swatch" style="background:#C8A24B"></span>Playnite &mdash; whole row, immediately</span>
+      <span><span class="swatch" style="background:#5BD1B0"></span>SuperScroll &mdash; eased</span>
+    </div>
+  </div>
+
+  <p class="note"><b>Why two panes and not one.</b> Playnite scrolls in whole rows: its scroll position counts items, so the smallest move it can make is one entire row and nothing exists in between. SuperScroll switches the same list to counting pixels, which is what gives the animation something to move through.</p>
+  <p class="note"><b>Try the fast flick.</b> On the left, five quick notches are five separate jumps. On the right each notch extends a journey already running, so it accelerates &mdash; that is the difference you feel most when scrolling a long library.</p>
+
+<script>
+(function(){
+  'use strict';
+
+  // Ported verbatim from src/Services/ScrollPolicy.cs so the bench cannot drift from the plugin.
+  var WHEEL_DELTA = 120, SETTLE = 0.5, REF_FRAME = 1000/60, MIN_S = 0.05, MAX_S = 0.95;
+
+  function clamp(v,min,max){ if(max<min) return min; return v<min?min:(v>max?max:v); }
+  function stepForNotch(lines,h){ if(lines<=0) lines=3; if(h<=0) h=16; return lines*h; }
+  function deltaToPixels(d,step){ return (d/WHEEL_DELTA)*step; }
+  function accumulate(t,dpx,min,max){ return clamp(t-dpx,min,max); }
+  function scaleSmoothing(s,ms){
+    s = clamp(s,MIN_S,MAX_S);
+    if(ms<=0) return s;
+    if(ms>250) ms=250;
+    return 1-Math.pow(1-s, ms/REF_FRAME);
+  }
+  function stepTo(cur,tgt,s,ms){
+    var rem = tgt-cur;
+    if(Math.abs(rem)<SETTLE) return tgt;
+    return cur + rem*scaleSmoothing(s,ms);
+  }
+
+  var ROW = 38, GAMES = [
+    ['Hollow Knight',2017],['Hades',2020],['Celeste',2018],['Disco Elysium',2019],
+    ['Outer Wilds',2019],['Return of the Obra Dinn',2018],['Slay the Spire',2019],
+    ['Subnautica',2018],['Stardew Valley',2016],['Dead Cells',2018],
+    ['Factorio',2020],['Rimworld',2018],['Terraria',2011],['Valheim',2021],
+    ['Baba Is You',2019],['Into the Breach',2018],['Katana ZERO',2019],
+    ['Noita',2020],['Ori and the Will of the Wisps',2020],['Pyre',2017],
+    ['Risk of Rain 2',2020],['Sekiro',2019],['Titanfall 2',2016],['Tunic',2022],
+    ['Undertale',2015],['Vampire Survivors',2022],['Va-11 Hall-A',2016],
+    ['The Witness',2016],['Xenoblade Chronicles',2010],['Yakuza 0',2015],
+    ['Zero Escape',2016],['Amnesia',2010],['Bastion',2011],['Cuphead',2017],
+    ['Deep Rock Galactic',2020],['Elden Ring',2022],['FTL',2012],['Grim Dawn',2016],
+    ['Hyper Light Drifter',2016],['Inscryption',2021],['Journey',2012],['Kenshi',2018]
+  ];
+
+  function buildList(el){
+    var html = '';
+    for(var i=0;i<GAMES.length;i++){
+      html += '<div class="row" style="height:'+ROW+'px">'+
+              '<div class="art"></div><div class="nm">'+GAMES[i][0]+'</div>'+
+              '<div class="yr">'+GAMES[i][1]+'</div></div>';
+    }
+    el.innerHTML = html;
+  }
+
+  var listOld = document.getElementById('listOld'),
+      listNew = document.getElementById('listNew'),
+      railOld = document.getElementById('railOld'),
+      railNew = document.getElementById('railNew'),
+      vpOld   = document.getElementById('vpOld');
+
+  buildList(listOld); buildList(listNew);
+
+  var VIEW = vpOld.clientHeight || 290;
+  var MAXOFF = Math.max(0, GAMES.length*ROW - VIEW);
+
+  var oldOffset = 0, newOffset = 0, newTarget = 0, running = false, last = 0;
+
+  function settings(){
+    return {
+      s: parseFloat(document.getElementById('sSmooth').value),
+      lines: parseFloat(document.getElementById('sLines').value),
+      h: parseFloat(document.getElementById('sHeight').value)
+    };
+  }
+
+  function paint(){
+    listOld.style.transform = 'translateY('+(-oldOffset)+'px)';
+    listNew.style.transform = 'translateY('+(-newOffset)+'px)';
+    var frac = VIEW/(GAMES.length*ROW), th = Math.max(24, VIEW*frac);
+    railOld.style.height = th+'px';
+    railNew.style.height = th+'px';
+    railOld.style.top = (MAXOFF? (oldOffset/MAXOFF)*(VIEW-th):0)+'px';
+    railNew.style.top = (MAXOFF? (newOffset/MAXOFF)*(VIEW-th):0)+'px';
+  }
+
+  function tick(now){
+    if(!running) return;
+    var ms = last? now-last : REF_FRAME;
+    last = now;
+    newOffset = stepTo(newOffset, newTarget, settings().s, ms);
+    paint();
+    if(Math.abs(newTarget-newOffset) < SETTLE){ newOffset = newTarget; running=false; last=0; paint(); return; }
+    requestAnimationFrame(tick);
+  }
+
+  function notch(delta){
+    var cfg = settings();
+    var px = deltaToPixels(delta, stepForNotch(cfg.lines, cfg.h));
+
+    // Playnite: snaps to whole rows, and does it immediately.
+    var rows = Math.round(px/ROW) || (px>0?1:-1);
+    oldOffset = clamp(oldOffset - rows*ROW, 0, MAXOFF);
+
+    // SuperScroll: extends the pending journey.
+    if(!running) newTarget = newOffset;
+    newTarget = accumulate(newTarget, px, 0, MAXOFF);
+    if(!running){ running = true; last = 0; requestAnimationFrame(tick); }
+    paint();
+  }
+
+  document.getElementById('stage').addEventListener('wheel', function(e){
+    e.preventDefault();
+    notch(e.deltaY > 0 ? -WHEEL_DELTA : WHEEL_DELTA);
+  }, {passive:false});
+
+  document.getElementById('btnOne').addEventListener('click', function(){ notch(-WHEEL_DELTA); });
+  document.getElementById('btnFlick').addEventListener('click', function(){
+    var n=0, id=setInterval(function(){ notch(-WHEEL_DELTA); if(++n>=5) clearInterval(id); }, 45);
+  });
+  document.getElementById('btnTop').addEventListener('click', function(){
+    oldOffset=0; newTarget=0; newOffset=0; running=false; paint();
+  });
+
+  // ---- derived numbers + curve ----
+  var cv = document.getElementById('curve'), cx = cv.getContext('2d');
+
+  function settleMs(s){
+    var cur=0, tgt=1000, ms=0;
+    for(var i=0;i<600;i++){ cur = stepTo(cur,tgt,s,REF_FRAME); ms += REF_FRAME; if(Math.abs(tgt-cur)<SETTLE) break; }
+    return Math.round(ms);
+  }
+
+  function drawCurve(s){
+    var W=cv.width, H=cv.height, pad=26, span=400;
+    cx.clearRect(0,0,W,H);
+
+    cx.strokeStyle='#222B36'; cx.lineWidth=1;
+    for(var g=0; g<=4; g++){
+      var y = pad + (H-pad*2)*(g/4);
+      cx.beginPath(); cx.moveTo(pad,y); cx.lineTo(W-pad,y); cx.stroke();
+    }
+
+    var x0=pad, x1=W-pad, y0=H-pad, y1=pad;
+    // Playnite: the whole distance, on the first frame.
+    cx.strokeStyle='#C8A24B'; cx.lineWidth=3;
+    cx.beginPath(); cx.moveTo(x0,y0); cx.lineTo(x0+2,y1); cx.lineTo(x1,y1); cx.stroke();
+
+    // SuperScroll: the eased approach.
+    cx.strokeStyle='#5BD1B0'; cx.lineWidth=3; cx.beginPath();
+    var cur=0, t=0, first=true;
+    while(t<=span){
+      var px = x0 + (t/span)*(x1-x0);
+      var py = y0 - (cur/1000)*(y0-y1);
+      if(first){ cx.moveTo(px,py); first=false; } else cx.lineTo(px,py);
+      cur = stepTo(cur,1000,s,REF_FRAME); t += REF_FRAME;
+    }
+    cx.stroke();
+
+    cx.fillStyle='#6B7A88'; cx.font='500 15px ui-monospace,Consolas,monospace';
+    cx.fillText('0 ms', x0, H-6);
+    cx.fillText('400 ms', x1-52, H-6);
+  }
+
+  function refresh(){
+    var cfg = settings();
+    var px = stepForNotch(cfg.lines, cfg.h);
+    document.getElementById('vSmooth').textContent = cfg.s.toFixed(2);
+    document.getElementById('vLines').textContent  = (cfg.lines%1?cfg.lines.toFixed(1):cfg.lines.toFixed(0));
+    document.getElementById('vHeight').textContent = cfg.h.toFixed(0)+' px';
+    document.getElementById('fPx').innerHTML   = px.toFixed(0)+'<small>px</small>';
+    document.getElementById('fRows').innerHTML = (px/ROW).toFixed(1)+'<small>rows</small>';
+    document.getElementById('fMs').innerHTML   = settleMs(cfg.s)+'<small>ms</small>';
+    drawCurve(cfg.s);
+    syncPresets(cfg);
+  }
+
+  function syncPresets(cfg){
+    var btns = document.querySelectorAll('.preset');
+    for(var i=0;i<btns.length;i++){
+      var b=btns[i];
+      var on = Math.abs(parseFloat(b.dataset.s)-cfg.s)<0.001 &&
+               Math.abs(parseFloat(b.dataset.l)-cfg.lines)<0.001 &&
+               Math.abs(parseFloat(b.dataset.h)-cfg.h)<0.001;
+      b.setAttribute('aria-pressed', on?'true':'false');
+    }
+  }
+
+  ['sSmooth','sLines','sHeight'].forEach(function(id){
+    document.getElementById(id).addEventListener('input', refresh);
+  });
+
+  document.getElementById('presets').addEventListener('click', function(e){
+    var b = e.target.closest('.preset'); if(!b) return;
+    document.getElementById('sSmooth').value = b.dataset.s;
+    document.getElementById('sLines').value  = b.dataset.l;
+    document.getElementById('sHeight').value = b.dataset.h;
+    refresh();
+  });
+
+  // Preload from the fragment the plugin appends (#s=0.30&l=6&h=136), so the bench opens showing
+  // the reader's ACTUAL configuration rather than defaults they then have to reproduce by hand.
+  // A fragment rather than a query string: it never reaches a server, and this page has none.
+  (function applyIncoming(){
+    var hash = (location.hash || '').replace(/^#/, '');
+    if(!hash) return;
+
+    var q = {};
+    hash.split('&').forEach(function(pair){
+      var kv = pair.split('=');
+      if(kv.length === 2) q[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1]);
+    });
+
+    function put(id, val, min, max){
+      var n = parseFloat(val);
+      if(isNaN(n)) return false;
+      document.getElementById(id).value = Math.max(min, Math.min(max, n));
+      return true;
+    }
+
+    var any = false;
+    any = put('sSmooth', q.s, 0.05, 0.95) || any;
+    any = put('sLines',  q.l, 1, 12)      || any;
+    any = put('sHeight', q.h, 8, 200)     || any;
+
+    if(any){
+      var badge = document.getElementById('yours');
+      if(badge) badge.hidden = false;
+    }
+  })();
+
+  refresh(); paint();
+})();
+</script>

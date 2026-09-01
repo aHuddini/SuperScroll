@@ -6,6 +6,19 @@
   Smooth, pixel-accurate scrolling for <a href="https://playnite.link/">Playnite</a>.
 </p>
 
+<p align="center">
+  <a href="https://ahuddini.github.io/SuperScroll/assets/bench.html"><b>&#9654;&nbsp; Try the tuning bench</b></a>
+  &nbsp;&middot;&nbsp;
+  <a href="#installation">Install</a>
+  &nbsp;&middot;&nbsp;
+  <a href="#settings">Settings</a>
+</p>
+
+<p align="center">
+  <sub>The bench runs the same easing SuperScroll uses, in your browser. Drag the sliders and feel<br>
+  the difference against Playnite's row-at-a-time scrolling before you install anything.</sub>
+</p>
+
 Playnite's lists scroll by whole rows: one wheel notch jumps one entire item, and nothing in between
 is possible. SuperScroll replaces that with frame-synced motion — every notch eases into place, and
 fast scrolling accelerates instead of stuttering.
