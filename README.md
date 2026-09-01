@@ -6,17 +6,21 @@
   Smooth, pixel-accurate scrolling for <a href="https://playnite.link/">Playnite</a>.
 </p>
 
+<h3 align="center">
+  🖱️&nbsp;&nbsp;<a href="https://ahuddini.github.io/SuperScroll/assets/bench.html">Feel the difference right now — open the live Tuning Bench</a>&nbsp;&nbsp;🎚️
+</h3>
+
 <p align="center">
-  <a href="https://ahuddini.github.io/SuperScroll/assets/bench.html"><b>&#9654;&nbsp; Try the tuning bench</b></a>
-  &nbsp;&middot;&nbsp;
-  <a href="#installation">Install</a>
-  &nbsp;&middot;&nbsp;
-  <a href="#settings">Settings</a>
+  ✨ <b>No install, no download.</b> It runs the exact easing SuperScroll uses, in your browser —<br>
+  drag the sliders and scroll it against Playnite's row-at-a-time behaviour, side by side. ✨
 </p>
 
 <p align="center">
-  <sub>The bench runs the same easing SuperScroll uses, in your browser. Drag the sliders and feel<br>
-  the difference against Playnite's row-at-a-time scrolling before you install anything.</sub>
+  📥 <a href="#installation">Install</a>
+  &nbsp;&middot;&nbsp;
+  ⚙️ <a href="#settings">Settings</a>
+  &nbsp;&middot;&nbsp;
+  📝 <a href="CHANGELOG.md">Changelog</a>
 </p>
 
 Playnite's lists scroll by whole rows: one wheel notch jumps one entire item, and nothing in between
